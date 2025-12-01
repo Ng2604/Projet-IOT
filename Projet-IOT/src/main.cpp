@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiManager.h> 
 #include <PubSubClient.h>
 
 #include <MD_Parola.h>
@@ -12,14 +13,11 @@
 
 MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 
+// Message MQTT
 String messageToDisplay = "";
 bool newMessage = false;
 
-
-const char* ssid = "Noah";
-const char* password = "Paultoutnu";
-
-
+// MQTT
 const char* mqtt_server = "test.mosquitto.org";
 const char* topic_sub = "iot/demo";
 
@@ -27,6 +25,9 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 
+// =========================
+// MQTT CALLBACK
+// =========================
 void callback(char* topic, byte* message, unsigned int length) {
   messageToDisplay = "";
 
@@ -41,62 +42,79 @@ void callback(char* topic, byte* message, unsigned int length) {
 }
 
 
-void reconnect() {
+// =========================
+// RECONNEXION MQTT
+// =========================
+void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Connexion MQTT… ");
 
     if (client.connect("ESP32_Matrix")) {
-      Serial.println("OK");
+      Serial.println("OK !");
       client.subscribe(topic_sub);
     } else {
-      Serial.print("Erreur, code = ");
-      Serial.println(client.state());
+      Serial.print("Erreur MQTT, code = ");
+      Serial.print(client.state());
+      Serial.println(" → retry dans 2s");
       delay(2000);
     }
   }
 }
 
 
+// =========================
+// SETUP
+// =========================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
+  // --------------------------
+  //  MATRICE LED
+  // --------------------------
   myDisplay.begin();
   myDisplay.setIntensity(5);
   myDisplay.displayClear();
+  Serial.println("Matrice prête !");
 
-  Serial.print("  Connexion au WiFi... ");
-  Serial.println(ssid);
 
-  WiFi.begin(ssid, password);
+  // --------------------------
+  //  APPAIRAGE WiFi AUTOMATIQUE
+  // --------------------------
+  WiFiManager wm;
 
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
+  wm.setAPCallback([](WiFiManager *myWM) {
+    Serial.println("=== MODE CONFIGURATION ===");
+    Serial.println("Connectez-vous au WiFi : ESP32_Setup");
+  });
+
+  bool res = wm.autoConnect("ESP32_Setup", "12345678");
+
+  if (!res) {
+    Serial.println("⚠️ ÉCHEC de l'appairage, reboot...");
+    delay(3000);
+    ESP.restart();
   }
 
-Serial.println("");
-
-if (WiFi.status() == WL_CONNECTED) {
   Serial.println("WiFi connecté !");
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
-} else {
-  Serial.println("ÉCHEC connexion WiFi !");
-}
 
 
+  // --------------------------
+  //  MQTT
+  // --------------------------
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-
-  Serial.println("Matrice prête !");
 }
 
+
+// =========================
+// LOOP
+// =========================
 void loop() {
   if (!client.connected()) {
-    reconnect();
+    reconnectMQTT();
   }
   client.loop();
 
