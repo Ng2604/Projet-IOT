@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include <WiFiManager.h> 
 #include <PubSubClient.h>
+#include <DNSServer.h>
+#include <WebServer.h>
 
 #include <MD_Parola.h>
 #include <MD_MAX72xx.h>
@@ -9,9 +11,11 @@
 
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
 #define MAX_DEVICES 4
-#define CS_PIN 19
+#define CLK_PIN   18  // <--- Mets ici le numéro où est branché ton fil CLK
+#define DATA_PIN  23  // <--- Mets ici le numéro où est branché ton fil DIN
+#define CS_PIN    19  // <--- Mets ici le numéro où est branché ton fil CS
 
-MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
+MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
 // Message MQTT
 String messageToDisplay = "";
@@ -43,19 +47,27 @@ void callback(char* topic, byte* message, unsigned int length) {
 
 
 // =========================
-// RECONNEXION MQTT
+// RECONNEXION MQTT (CORRIGÉE)
 // =========================
 void reconnectMQTT() {
   while (!client.connected()) {
-    Serial.print("Connexion MQTT… ");
+    Serial.print("Connexion MQTT... ");
 
-    if (client.connect("ESP32_Matrix")) {
-      Serial.println("OK !");
+    // CRÉATION D'UN ID UNIQUE ALÉATOIRE
+    String clientId = "ESP32_Matrix_";
+    clientId += String(random(0xffff), HEX); // Ajoute des chiffres aléatoires à la fin
+
+    Serial.print("ClientID: ");
+    Serial.print(clientId);
+
+    // On utilise clientId.c_str() pour convertir le String en format compatible
+    if (client.connect(clientId.c_str())) {
+      Serial.println(" -> Connecté !");
       client.subscribe(topic_sub);
     } else {
-      Serial.print("Erreur MQTT, code = ");
+      Serial.print(" -> Echec, code = ");
       Serial.print(client.state());
-      Serial.println(" → retry dans 2s");
+      Serial.println(" -> retry dans 2s");
       delay(2000);
     }
   }
@@ -81,6 +93,7 @@ void setup() {
   // --------------------------
   //  APPAIRAGE WiFi AUTOMATIQUE
   // --------------------------
+  WiFi.mode(WIFI_STA);
   WiFiManager wm;
 
   wm.setAPCallback([](WiFiManager *myWM) {
