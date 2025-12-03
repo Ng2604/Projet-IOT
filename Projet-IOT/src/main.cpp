@@ -129,14 +129,17 @@ void sampleAndAnalyzeAudio() {
 // =========================
 void displaySpectrum() {
   mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);  // Désactive rafraîchissement auto
-  mx.clear();
+  mx.clear();  // Efface TOUT (devrait éteindre la barre problématique)
   
   for (int col = 0; col < NUM_BANDS; col++) {
     int height = bandValues[col];
     
     // Dessiner une colonne verticale pour chaque bande
     for (int row = 0; row < height; row++) {
-      mx.setPoint(7 - row, col, true);  // 7-row pour inverser (bas vers haut)
+      // Inverser l'ordre si nécessaire (essaie avec et sans cette ligne)
+      int adjustedCol = col;  // Ou essaie : int adjustedCol = NUM_BANDS - 1 - col;
+      
+      mx.setPoint(7 - row, adjustedCol, true);  // 7-row pour inverser (bas vers haut)
     }
   }
   
