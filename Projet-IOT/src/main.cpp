@@ -73,47 +73,34 @@ void callback(char* topic, byte* message, unsigned int length) {
   for (int i = 0; i < length; i++) {
     messageToDisplay += (char)message[i];
   }
-  
-  // Nettoyer les espaces/retours à la ligne
-  messageToDisplay.trim();
 
-  Serial.print("📥 MQTT reçu: [");
-  Serial.print(messageToDisplay);
-  Serial.print("] (longueur: ");
-  Serial.print(messageToDisplay.length());
-  Serial.println(")");
+  Serial.print("📥 MQTT reçu: ");
+  Serial.println(messageToDisplay);
 
-  // GESTION DES COMMANDES MODE - comparaison robuste
-  if (messageToDisplay.equalsIgnoreCase("MODE:AFFICHAGE") || 
-      messageToDisplay.equalsIgnoreCase("AFFICHAGE")) {
+  // GESTION DES COMMANDES MODE
+  if (messageToDisplay == "MODE:AFFICHAGE") {
     currentMode = MODE_AFFICHAGE;
     displayingText = false;
     myDisplay.displayClear();
     mx.clear();
-    Serial.println("✅✅✅ Mode AFFICHAGE activé ✅✅✅");
-    Serial.print("Mode actuel: ");
-    Serial.println(currentMode == MODE_AFFICHAGE ? "AFFICHAGE" : "MICRO");
+    Serial.println("✅ Mode AFFICHAGE activé");
     return;
   }
   
-  if (messageToDisplay.equalsIgnoreCase("MODE:MICRO") || 
-      messageToDisplay.equalsIgnoreCase("MICRO")) {
+  if (messageToDisplay == "MODE:MICRO") {
     currentMode = MODE_MICRO;
     displayingText = false;
     myDisplay.displayClear();
     mx.clear();
-    Serial.println("✅✅✅ Mode MICRO activé ✅✅✅");
-    Serial.print("Mode actuel: ");
-    Serial.println(currentMode == MODE_AFFICHAGE ? "AFFICHAGE" : "MICRO");
+    Serial.println("✅ Mode MICRO activé");
     return;
   }
 
   // MESSAGE TEXTE (seulement en mode AFFICHAGE)
   if (currentMode == MODE_AFFICHAGE) {
     newMessage = true;
-    Serial.println("➡️ Message mis en file d'attente pour affichage");
   } else {
-    Serial.println("⚠️ Message ignoré (mode MICRO actif)");
+    Serial.println("⚠️ Message ignoré (mode MICRO)");
   }
 }
 
@@ -261,8 +248,8 @@ void setup() {
 void loop() {
   unsigned long now = millis();
   
-  // Vérifier MQTT plus fréquemment
-  if (now - lastMqttCheck >= 5) {
+  // Vérifier MQTT fréquemment (toutes les 10ms max)
+  if (now - lastMqttCheck >= 10) {
     if (!client.connected()) {
       reconnectMQTT();
     }
@@ -275,46 +262,42 @@ void loop() {
   // ========================================
   if (currentMode == MODE_AFFICHAGE) {
     
-    // Nouveau message : configuration optimale pour défilement fluide
+    // Nouveau message : l'afficher immédiatement
     if (newMessage) {
       displayingText = true;
       textStartTime = millis();
       
       myDisplay.displayClear();
-      myDisplay.setTextAlignment(PA_LEFT);
-      myDisplay.setSpeed(50);
-      myDisplay.setPause(1000);
+      myDisplay.setTextAlignment(PA_LEFT);  // Alignement LEFT pour défilement
+      myDisplay.setSpeed(50);  // Vitesse optimale pour fluidité
+      myDisplay.setPause(0);
       myDisplay.setScrollSpacing(1);
       
       myDisplay.displayText(
         messageToDisplay.c_str(),
         PA_LEFT,
         50,
-        1000,
+        0,
         PA_SCROLL_LEFT,
         PA_SCROLL_LEFT
       );
       
       newMessage = false;
-      Serial.println("✅ Message affiché - défilement en cours...");
-      Serial.print("📋 Mode: ");
-      Serial.println(currentMode == MODE_AFFICHAGE ? "AFFICHAGE" : "MICRO");
+      Serial.println("✅ Message affiché");
     }
 
-    // Animer le texte - APPELÉ À CHAQUE LOOP SANS DELAY
+    // Animer le texte
     if (displayingText) {
       bool animFinished = myDisplay.displayAnimate();
       
-      // Timeout après 15 secondes
-      if (animFinished || millis() - textStartTime > 15000) {
+      if (animFinished || millis() - textStartTime > 10000) {
         displayingText = false;
         myDisplay.displayClear();
         mx.clear();
-        Serial.println("✅ Animation terminée");
       }
     }
     
-    // AUCUN DELAY pour fluidité maximale
+    // PAS DE DELAY en mode affichage = réactivité maximale
     yield();
   }
   
@@ -327,7 +310,7 @@ void loop() {
     displaySpectrum();
     
     if (millis() - lastDebugTime > 3000) {
-      Serial.print("🎵 Mode MICRO actif - ");
+      Serial.print("🎵 ");
       for (int i = 0; i < NUM_BANDS; i += 4) {
         Serial.printf("[%d]=%d ", i, bandValues[i]);
       }
