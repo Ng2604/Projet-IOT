@@ -166,8 +166,11 @@ void setup() {
 
   // Matrice LED
   mx.begin();  // Initialise MD_MAX72XX pour le dessin pixel
+  mx.control(MD_MAX72XX::INTENSITY, 3);  // Réduit l'intensité (0-15)
+  mx.clear();  // Efface tout
+  
   myDisplay.begin();
-  myDisplay.setIntensity(5);
+  myDisplay.setIntensity(3);  // Cohérence avec mx
   myDisplay.displayClear();
   Serial.println("Matrice prête !");
 
@@ -229,6 +232,16 @@ void loop() {
 
   // Mode spectre audio par défaut
   sampleAndAnalyzeAudio();
+  
+  // Clear agressif pour éviter les pixels fantômes
+  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
+  for (int i = 0; i < MAX_DEVICES * 8; i++) {
+    for (int j = 0; j < 8; j++) {
+      mx.setPoint(j, i, false);  // Éteint TOUT pixel par pixel
+    }
+  }
+  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::ON);
+  
   displaySpectrum();
   
   delay(50);  // Rafraîchissement ~20 FPS
