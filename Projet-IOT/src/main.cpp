@@ -106,23 +106,49 @@ void callback(char* topic, byte* message, unsigned int length) {
 
 
 // =========================
-// RECONNEXION MQTT
+// RECONNEXION MQTT - AMÉLIORÉE
 // =========================
 void reconnectMQTT() {
   if (client.connected()) return;
   
-  Serial.print("Connexion MQTT... ");
+  static unsigned long lastAttempt = 0;
+  unsigned long now = millis();
+  
+  // Attendre 5 secondes entre chaque tentative
+  if (now - lastAttempt < 5000) return;
+  lastAttempt = now;
+  
+  Serial.print("🔄 Connexion MQTT... ");
   
   String clientId = "ESP32_";
   clientId += String(ESP.getEfuseMac(), HEX);
   
   if (client.connect(clientId.c_str())) {
-    Serial.println("✅ Connecté");
+    Serial.println("✅ Connecté à " + String(mqtt_server));
     client.subscribe(topic_sub);
+    Serial.println("📡 Souscrit à: " + String(topic_sub));
   } else {
-    Serial.print("❌ Échec (");
+    Serial.print("❌ Échec - Code erreur: ");
     Serial.print(client.state());
-    Serial.println(")");
+    
+    // Afficher le type d'erreur
+    switch (client.state()) {
+      case -4: Serial.println(" (Timeout)"); break;
+      case -3: Serial.println(" (Connexion perdue)"); break;
+      case -2: Serial.println(" (Échec connexion)"); break;
+      case -1: Serial.println(" (Déconnecté)"); break;
+      case 1: Serial.println(" (Mauvais protocole)"); break;
+      case 2: Serial.println(" (ID rejeté)"); break;
+      case 3: Serial.println(" (Serveur indispo)"); break;
+      case 4: Serial.println(" (Mauvais login)"); break;
+      case 5: Serial.println(" (Non autorisé)"); break;
+      default: Serial.println(" (Erreur inconnue)"); break;
+    }
+    
+    // Vérifier la connexion WiFi
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("⚠️ WiFi déconnecté ! IP: " + WiFi.localIP().toString());
+    }
   }
 }
 
@@ -230,12 +256,15 @@ void setup() {
   Serial.print("📡 IP: ");
   Serial.println(WiFi.localIP());
 
-  // MQTT
+  // MQTT avec optimisations + retry
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-  client.setKeepAlive(10);
-  client.setSocketTimeout(3);
+  client.setKeepAlive(15);  // Augmenté de 10 à 15
+  client.setSocketTimeout(5);  // Augmenté de 3 à 5
   client.setBufferSize(512);
+  
+  // Première connexion
+  reconnectMQTT();
   
   Serial.println("✅ Configuration terminée");
   Serial.println("📋 Mode: AFFICHAGE par défaut\n");
