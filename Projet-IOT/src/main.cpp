@@ -11,10 +11,7 @@
 #include <arduinoFFT.h>
 
 // Configuration matrice
-// IMPORTANT : Utilise FC16_HW comme dans ton code original pour le texte
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-// Si le texte ne défile pas bien, essaie aussi :
-// #define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
 #define MAX_DEVICES 4
 #define CLK_PIN   18
 #define DATA_PIN  23
@@ -23,7 +20,7 @@
 // PIN MICROPHONE
 #define MIC_PIN 34
 
-// MD_Parola pour le texte MQTT (comme ton ancien code)
+// MD_Parola pour le texte MQTT
 MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
 // MD_MAX72XX pour le spectre audio
@@ -38,7 +35,16 @@ PubSubClient client(espClient);
 // Message MQTT
 String messageToDisplay = "";
 bool newMessage = false;
-bool displayingText = false;  // Mode affichage : texte ou spectre
+
+// MODES DE FONCTIONNEMENT
+enum Mode {
+  MODE_AFFICHAGE,
+  MODE_MICRO
+};
+
+Mode currentMode = MODE_AFFICHAGE;
+bool displayingText = false;
+unsigned long textStartTime = 0;
 
 // FFT AUDIO - Configuration
 #define SAMPLES 128
@@ -51,7 +57,7 @@ double vImag[SAMPLES];
 unsigned long samplingPeriod;
 int bandValues[NUM_BANDS];
 unsigned long lastDebugTime = 0;
-unsigned long textStartTime = 0;
+unsigned long lastMqttCheck = 0;
 
 // Objet FFT
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
@@ -62,15 +68,40 @@ ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ
 // =========================
 void callback(char* topic, byte* message, unsigned int length) {
   messageToDisplay = "";
+  messageToDisplay.reserve(length + 1);
 
   for (int i = 0; i < length; i++) {
     messageToDisplay += (char)message[i];
   }
 
-  Serial.print("MQTT Message reçu: ");
+  Serial.print("📥 MQTT reçu: ");
   Serial.println(messageToDisplay);
 
-  newMessage = true;
+  // GESTION DES COMMANDES MODE
+  if (messageToDisplay == "MODE:AFFICHAGE") {
+    currentMode = MODE_AFFICHAGE;
+    displayingText = false;
+    myDisplay.displayClear();
+    mx.clear();
+    Serial.println("✅ Mode AFFICHAGE activé");
+    return;
+  }
+  
+  if (messageToDisplay == "MODE:MICRO") {
+    currentMode = MODE_MICRO;
+    displayingText = false;
+    myDisplay.displayClear();
+    mx.clear();
+    Serial.println("✅ Mode MICRO activé");
+    return;
+  }
+
+  // MESSAGE TEXTE (seulement en mode AFFICHAGE)
+  if (currentMode == MODE_AFFICHAGE) {
+    newMessage = true;
+  } else {
+    Serial.println("⚠️ Message ignoré (mode MICRO)");
+  }
 }
 
 
@@ -78,24 +109,20 @@ void callback(char* topic, byte* message, unsigned int length) {
 // RECONNEXION MQTT
 // =========================
 void reconnectMQTT() {
-  while (!client.connected()) {
-    Serial.print("Connexion MQTT... ");
-
-    String clientId = "ESP32_Matrix_";
-    clientId += String(random(0xffff), HEX);
-
-    Serial.print("ClientID: ");
-    Serial.print(clientId);
-
-    if (client.connect(clientId.c_str())) {
-      Serial.println(" -> Connecté !");
-      client.subscribe(topic_sub);
-    } else {
-      Serial.print(" -> Echec, code = ");
-      Serial.print(client.state());
-      Serial.println(" -> retry dans 2s");
-      delay(2000);
-    }
+  if (client.connected()) return;
+  
+  Serial.print("Connexion MQTT... ");
+  
+  String clientId = "ESP32_";
+  clientId += String(ESP.getEfuseMac(), HEX);
+  
+  if (client.connect(clientId.c_str())) {
+    Serial.println("✅ Connecté");
+    client.subscribe(topic_sub);
+  } else {
+    Serial.print("❌ Échec (");
+    Serial.print(client.state());
+    Serial.println(")");
   }
 }
 
@@ -104,7 +131,6 @@ void reconnectMQTT() {
 // LECTURE & ANALYSE AUDIO
 // =========================
 void sampleAndAnalyzeAudio() {
-  // Échantillonnage audio
   for (int i = 0; i < SAMPLES; i++) {
     unsigned long currentMicros = micros();
     
@@ -116,16 +142,13 @@ void sampleAndAnalyzeAudio() {
     }
   }
 
-  // Calcul FFT
   FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward);
   FFT.compute(FFTDirection::Forward);
   FFT.complexToMagnitude();
 
-  // Forcer la première bin (DC/bruit) à 0
   vReal[0] = 0;
   vReal[1] = 0;
 
-  // Répartir les fréquences sur 32 bandes
   for (int i = 0; i < NUM_BANDS; i++) {
     int startBin = i * (SAMPLES / 2) / NUM_BANDS;
     int endBin = (i + 1) * (SAMPLES / 2) / NUM_BANDS;
@@ -137,12 +160,8 @@ void sampleAndAnalyzeAudio() {
       }
     }
     
-    // Seuil pour ignorer le bruit de fond
-    if (maxVal < 50) {
-      maxVal = 0;
-    }
+    if (maxVal < 50) maxVal = 0;
     
-    // Normaliser sur 8 niveaux
     bandValues[i] = map(maxVal, 0, 1500, 0, 8);
     bandValues[i] = constrain(bandValues[i], 0, 8);
   }
@@ -150,19 +169,15 @@ void sampleAndAnalyzeAudio() {
 
 
 // =========================
-// AFFICHAGE SPECTRE SUR MATRICE
+// AFFICHAGE SPECTRE
 // =========================
 void displaySpectrum() {
-  // Utiliser mx pour dessiner le spectre pixel par pixel
   mx.clear();
   
   for (int col = 0; col < NUM_BANDS; col++) {
     int height = bandValues[col];
     
-    // Ignorer bande 0 si saturée
-    if (col == 0 && height >= 7) {
-      continue;
-    }
+    if (col == 0 && height >= 7) continue;
     
     for (int row = 0; row < height; row++) {
       mx.setPoint(7 - row, col, true);
@@ -178,122 +193,134 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  // Configuration FFT
-  samplingPeriod = round(1000000 * (1.0 / SAMPLING_FREQ));
+  Serial.println("\n🚀 ESP32 IoT - DÉMARRAGE");
 
-  // Pin microphone
+  samplingPeriod = round(1000000 * (1.0 / SAMPLING_FREQ));
   pinMode(MIC_PIN, INPUT);
 
-  // --------------------------
-  //  MATRICE LED
-  // --------------------------
-  myDisplay.begin();  // MD_Parola en premier
-  myDisplay.setIntensity(5);
+  // Configuration matrice optimisée pour fluidité
+  myDisplay.begin();
+  myDisplay.setIntensity(8);
+  myDisplay.setInvert(false);
   myDisplay.displayClear();
   
-  mx.begin();  // MD_MAX72XX ensuite
+  mx.begin();
   mx.clear();
   
-  Serial.println("Matrice prête !");
+  Serial.println("✅ Matrice prête");
 
-  // --------------------------
-  //  APPAIRAGE WiFi AUTOMATIQUE
-  // --------------------------
+  // WiFi
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  
   WiFiManager wm;
+  wm.setConfigPortalTimeout(180);
 
   wm.setAPCallback([](WiFiManager *myWM) {
-    Serial.println("=== MODE CONFIGURATION ===");
-    Serial.println("Connectez-vous au WiFi : ESP32_Setup");
+    Serial.println("\n📱 WiFi: ESP32_Setup / 12345678");
   });
 
-  bool res = wm.autoConnect("ESP32_Setup", "12345678");
-
-  if (!res) {
-    Serial.println("⚠️ ÉCHEC de l'appairage, reboot...");
-    delay(3000);
+  if (!wm.autoConnect("ESP32_Setup", "12345678")) {
+    Serial.println("⚠️ Timeout WiFi, reboot...");
+    delay(1000);
     ESP.restart();
   }
 
-  Serial.println("WiFi connecté !");
-  Serial.print("IP: ");
+  Serial.println("✅ WiFi connecté");
+  Serial.print("📡 IP: ");
   Serial.println(WiFi.localIP());
 
-  // --------------------------
-  //  MQTT
-  // --------------------------
+  // MQTT
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-
-  Serial.println("🎵 Mode Spectre Audio activé !");
+  client.setKeepAlive(10);
+  client.setSocketTimeout(3);
+  client.setBufferSize(512);
+  
+  Serial.println("✅ Configuration terminée");
+  Serial.println("📋 Mode: AFFICHAGE par défaut\n");
 }
 
 
 // =========================
-// LOOP
+// LOOP - OPTIMISÉE FLUIDITÉ
 // =========================
 void loop() {
-  // Maintenir MQTT connecté
-  if (!client.connected()) {
-    reconnectMQTT();
-  }
-  client.loop();
-
-  // Si message MQTT reçu, passer en mode texte
-  if (newMessage) {
-    displayingText = true;
-    textStartTime = millis();
-    
-    // Configurer MD_Parola pour utiliser TOUTE la matrice
-    myDisplay.displayClear();
-    myDisplay.setTextAlignment(PA_CENTER);
-    myDisplay.setSpeed(50);
-    
-    // Afficher le texte avec MD_Parola sur TOUTE la matrice
-    myDisplay.displayText(
-      messageToDisplay.c_str(),
-      PA_CENTER, 50, 0,
-      PA_SCROLL_LEFT, PA_SCROLL_LEFT
-    );
-    
-    newMessage = false;
-  }
-
-  // Mode texte : animer le texte pendant 10 secondes
-  if (displayingText) {
-    bool animFinished = myDisplay.displayAnimate();
-    
-    // Vérifier si animation terminée OU timeout
-    if (animFinished || millis() - textStartTime > 10000) {
-      displayingText = false;
-      myDisplay.displayClear();
-      mx.clear();
-      Serial.println("Retour au spectre audio");
+  unsigned long now = millis();
+  
+  // Vérifier MQTT plus fréquemment
+  if (now - lastMqttCheck >= 5) {  // Réduit à 5ms pour meilleure réactivité
+    if (!client.connected()) {
+      reconnectMQTT();
     }
+    client.loop();
+    lastMqttCheck = now;
   }
-  // Mode spectre : afficher le spectre audio
-  else {
+
+  // ========================================
+  // MODE AFFICHAGE
+  // ========================================
+  if (currentMode == MODE_AFFICHAGE) {
+    
+    // Nouveau message : configuration optimale pour défilement fluide
+    if (newMessage) {
+      displayingText = true;
+      textStartTime = millis();
+      
+      myDisplay.displayClear();
+      myDisplay.setTextAlignment(PA_LEFT);  // Alignement LEFT pour défilement
+      myDisplay.setSpeed(50);  // Vitesse modérée (plus bas = plus rapide, essayer 30-80)
+      myDisplay.setPause(1000);  // Pause 1s au début
+      myDisplay.setScrollSpacing(1);  // Espacement minimal entre caractères
+      
+      myDisplay.displayText(
+        messageToDisplay.c_str(),
+        PA_LEFT,
+        50,
+        1000,
+        PA_SCROLL_LEFT,
+        PA_SCROLL_LEFT
+      );
+      
+      newMessage = false;
+      Serial.println("✅ Message affiché");
+    }
+
+    // Animer le texte - APPELÉ À CHAQUE LOOP SANS DELAY
+    if (displayingText) {
+      bool animFinished = myDisplay.displayAnimate();
+      
+      // Timeout après 15 secondes
+      if (animFinished || millis() - textStartTime > 15000) {
+        displayingText = false;
+        myDisplay.displayClear();
+        mx.clear();
+        Serial.println("✅ Animation terminée");
+      }
+    }
+    
+    // AUCUN DELAY pour fluidité maximale
+    // yield() laisse le système respirer
+    yield();
+  }
+  
+  // ========================================
+  // MODE MICRO
+  // ========================================
+  else if (currentMode == MODE_MICRO) {
+    
     sampleAndAnalyzeAudio();
     displaySpectrum();
     
-    // DEBUG : afficher les valeurs toutes les 2 secondes
-    if (millis() - lastDebugTime > 2000) {
-      Serial.print("Valeurs spectre: ");
+    if (millis() - lastDebugTime > 3000) {
+      Serial.print("🎵 ");
       for (int i = 0; i < NUM_BANDS; i += 4) {
         Serial.printf("[%d]=%d ", i, bandValues[i]);
       }
       Serial.println();
-      
-      // Valeurs RAW pour calibration
-      Serial.print("Valeurs RAW FFT (bins 10-20): ");
-      for (int i = 10; i < 20; i++) {
-        Serial.printf("%.0f ", vReal[i]);
-      }
-      Serial.println();
-      
       lastDebugTime = millis();
     }
+    
+    delay(30);
   }
-  
-  delay(50);
 }
