@@ -5,25 +5,20 @@
 #include <DNSServer.h>
 #include <WebServer.h>
 
-#include <MD_Parola.h>
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 #include <arduinoFFT.h>
 
-// Essaie ces types un par un si FC16_HW ne marche pas :
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
-// #define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
-// #define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
-// #define HARDWARE_TYPE MD_MAX72XX::ICSTATION_HW
 #define MAX_DEVICES 4
 #define CLK_PIN   18
 #define DATA_PIN  23
 #define CS_PIN    19
 
-// PIN MICROPHONE (selon ton schéma, j'utilise un ADC libre)
-#define MIC_PIN 34  // ADC1_CH6 - Change si ton micro est sur un autre pin
+// PIN MICROPHONE
+#define MIC_PIN 34
 
-MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+// UNIQUEMENT MD_MAX72XX (plus de MD_Parola qui interfère)
 MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
 // MQTT
@@ -41,13 +36,13 @@ bool newMessage = false;
 #define SAMPLING_FREQ 10000
 #define NUM_BANDS 32
 
-// Variables FFT (DOIVENT être déclarées avant l'objet FFT)
+// Variables FFT
 double vReal[SAMPLES];
 double vImag[SAMPLES];
 unsigned long samplingPeriod;
 int bandValues[NUM_BANDS];
 
-// Objet FFT (APRÈS les variables)
+// Objet FFT
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
 
 
@@ -95,10 +90,9 @@ void sampleAndAnalyzeAudio() {
   for (int i = 0; i < SAMPLES; i++) {
     unsigned long currentMicros = micros();
     
-    vReal[i] = analogRead(MIC_PIN);  // Lecture du micro
+    vReal[i] = analogRead(MIC_PIN);
     vImag[i] = 0;
     
-    // Attendre la prochaine période d'échantillonnage
     while (micros() < (currentMicros + samplingPeriod)) {
       // Attente précise
     }
@@ -121,7 +115,7 @@ void sampleAndAnalyzeAudio() {
       }
     }
     
-    // Normaliser sur 8 niveaux (hauteur de la matrice)
+    // Normaliser sur 8 niveaux
     bandValues[i] = map(maxVal, 0, 2000, 0, 8);
     bandValues[i] = constrain(bandValues[i], 0, 8);
   }
@@ -132,22 +126,37 @@ void sampleAndAnalyzeAudio() {
 // AFFICHAGE SPECTRE SUR MATRICE
 // =========================
 void displaySpectrum() {
-  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);  // Désactive rafraîchissement auto
-  mx.clear();  // Efface TOUT (devrait éteindre la barre problématique)
+  // CLEAR COMPLET - éteint TOUT
+  mx.clear();
   
+  // Dessiner le spectre
   for (int col = 0; col < NUM_BANDS; col++) {
     int height = bandValues[col];
     
-    // Dessiner une colonne verticale pour chaque bande
     for (int row = 0; row < height; row++) {
-      // Inverser l'ordre si nécessaire (essaie avec et sans cette ligne)
-      int adjustedCol = col;  // Ou essaie : int adjustedCol = NUM_BANDS - 1 - col;
-      
-      mx.setPoint(7 - row, adjustedCol, true);  // 7-row pour inverser (bas vers haut)
+      mx.setPoint(7 - row, col, true);
     }
   }
+}
+
+
+// =========================
+// AFFICHAGE TEXTE SIMPLE
+// =========================
+void displayText(String text) {
+  mx.clear();
   
-  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::ON);  // Réactive le rafraîchissement
+  // Affichage simple du texte (première ligne, tronqué si trop long)
+  mx.setFont(nullptr);  // Police par défaut
+  
+  // Afficher les premiers caractères (max 4 modules × 8 pixels)
+  int maxChars = min((int)text.length(), 16);
+  
+  for (int i = 0; i < maxChars && i < 4; i++) {
+    // Affichage basique caractère par caractère
+    // (Pour un vrai scroll, il faudrait une lib dédiée)
+    mx.setChar(i * 8, text[i]);
+  }
 }
 
 
@@ -164,17 +173,20 @@ void setup() {
   // Pin microphone
   pinMode(MIC_PIN, INPUT);
 
-  // Matrice LED
-  mx.begin();  // Initialise MD_MAX72XX pour le dessin pixel
-  mx.control(MD_MAX72XX::INTENSITY, 3);  // Réduit l'intensité (0-15)
-  mx.clear();  // Efface tout
+  // Matrice LED - UNIQUEMENT mx
+  mx.begin();
+  mx.control(MD_MAX72XX::INTENSITY, 2);  // Intensité basse
+  mx.clear();
   
-  myDisplay.begin();
-  myDisplay.setIntensity(3);  // Cohérence avec mx
-  myDisplay.displayClear();
+  // TEST : vérifier que clear fonctionne
+  mx.fillScreen(true);
+  delay(500);
+  mx.clear();
+  delay(500);
+  
   Serial.println("Matrice prête !");
 
-  // WiFi Manager (ton appairage conservé)
+  // WiFi Manager
   WiFi.mode(WIFI_STA);
   WiFiManager wm;
 
@@ -207,42 +219,23 @@ void setup() {
 // LOOP
 // =========================
 void loop() {
-  // Maintenir MQTT connecté
+  // Maintenir MQTT
   if (!client.connected()) {
     reconnectMQTT();
   }
   client.loop();
 
-  // Si message MQTT reçu, afficher en mode texte pendant 5 secondes
+  // Si message MQTT reçu
   if (newMessage) {
-    myDisplay.displayText(
-      messageToDisplay.c_str(),
-      PA_CENTER, 50, 0,
-      PA_SCROLL_LEFT, PA_SCROLL_LEFT
-    );
-    
-    unsigned long textStartTime = millis();
-    while (millis() - textStartTime < 5000) {  // Afficher 5 secondes
-      myDisplay.displayAnimate();
-      client.loop();  // Maintenir MQTT pendant l'affichage
-    }
-    
+    displayText(messageToDisplay);
+    delay(3000);  // Afficher 3 secondes
+    mx.clear();
     newMessage = false;
   }
 
-  // Mode spectre audio par défaut
+  // Mode spectre audio
   sampleAndAnalyzeAudio();
-  
-  // Clear agressif pour éviter les pixels fantômes
-  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);
-  for (int i = 0; i < MAX_DEVICES * 8; i++) {
-    for (int j = 0; j < 8; j++) {
-      mx.setPoint(j, i, false);  // Éteint TOUT pixel par pixel
-    }
-  }
-  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::ON);
-  
   displaySpectrum();
   
-  delay(50);  // Rafraîchissement ~20 FPS
+  delay(50);
 }
