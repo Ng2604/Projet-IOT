@@ -209,19 +209,18 @@ void setup() {
 
   // Matrice LED
   myDisplay.begin();
-  myDisplay.setIntensity(8);  // Augmenté de 5 à 8 pour meilleure visibilité
-  myDisplay.setInvert(false);  // Pas d'inversion
+  myDisplay.setIntensity(8);
+  myDisplay.setInvert(false);
   myDisplay.displayClear();
   
   mx.begin();
-  mx.control(MD_MAX72XX::INTENSITY, 8);  // Intensité pour MD_MAX72XX
   mx.clear();
   
   Serial.println("✅ Matrice prête");
 
   // WiFi
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);  // IMPORTANT : Désactiver le sleep WiFi pour latence minimale
+  WiFi.setSleep(false);  // Désactiver le sleep WiFi pour latence minimale
   
   WiFiManager wm;
   wm.setConfigPortalTimeout(180);  // Timeout 3 minutes
@@ -245,9 +244,9 @@ void setup() {
   client.setCallback(callback);
   
   // Paramètres optimisés pour latence minimale
-  client.setKeepAlive(10);         // Check connexion toutes les 10s
-  client.setSocketTimeout(3);      // Timeout court
-  client.setBufferSize(512);       // Buffer messages
+  client.setKeepAlive(10);
+  client.setSocketTimeout(3);
+  client.setBufferSize(512);
   
   Serial.println("✅ Configuration terminée");
   Serial.println("📋 Mode: AFFICHAGE par défaut\n");
@@ -264,7 +263,7 @@ void loop() {
     if (!client.connected()) {
       reconnectMQTT();
     }
-    client.loop();  // CRITIQUE : Traiter les messages MQTT
+    client.loop();
     lastMqttCheck = now;
   }
 
@@ -280,16 +279,17 @@ void loop() {
       
       myDisplay.displayClear();
       myDisplay.setTextAlignment(PA_CENTER);
-      
-      // Paramètres pour un défilement ultra-fluide
-      myDisplay.setSpeed(40);           // Vitesse modérée pour fluidité (10-100)
-      myDisplay.setPause(0);            // Pas de pause entre les répétitions
-      myDisplay.setScrollSpacing(1);    // Espacement minimal entre caractères
+      myDisplay.setSpeed(40);
+      myDisplay.setPause(0);
+      myDisplay.setScrollSpacing(1);
       
       myDisplay.displayText(
         messageToDisplay.c_str(),
-        PA_CENTER, 40, 0,
-        PA_SCROLL_LEFT, PA_SCROLL_LEFT
+        PA_CENTER,
+        40,
+        0,
+        PA_SCROLL_LEFT,
+        PA_SCROLL_LEFT
       );
       
       newMessage = false;
@@ -308,7 +308,7 @@ void loop() {
     }
     
     // PAS DE DELAY en mode affichage = réactivité maximale
-    yield();  // Laisser le WiFi travailler
+    yield();
   }
   
   // ========================================
@@ -329,6 +329,6 @@ void loop() {
       lastDebugTime = millis();
     }
     
-    delay(30);  // Petit délai seulement en mode spectre
+    delay(30);
   }
 }
