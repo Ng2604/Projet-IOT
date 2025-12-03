@@ -38,11 +38,11 @@ bool newMessage = false;
 
 // MODES DE FONCTIONNEMENT
 enum Mode {
-  MODE_AFFICHAGE,
-  MODE_MICRO
+  MODE_AFFICHAGE,  // Mode affichage LED (par défaut)
+  MODE_MICRO       // Mode spectre audio
 };
 
-Mode currentMode = MODE_AFFICHAGE;
+Mode currentMode = MODE_AFFICHAGE;  // Mode par défaut
 bool displayingText = false;
 unsigned long textStartTime = 0;
 
@@ -64,11 +64,11 @@ ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ
 
 
 // =========================
-// MQTT CALLBACK
+// MQTT CALLBACK - OPTIMISÉ
 // =========================
 void callback(char* topic, byte* message, unsigned int length) {
   messageToDisplay = "";
-  messageToDisplay.reserve(length + 1);
+  messageToDisplay.reserve(length + 1);  // Pré-allouer la mémoire
 
   for (int i = 0; i < length; i++) {
     messageToDisplay += (char)message[i];
@@ -77,7 +77,9 @@ void callback(char* topic, byte* message, unsigned int length) {
   Serial.print("📥 MQTT reçu: ");
   Serial.println(messageToDisplay);
 
+  // ========================================
   // GESTION DES COMMANDES MODE
+  // ========================================
   if (messageToDisplay == "MODE:AFFICHAGE") {
     currentMode = MODE_AFFICHAGE;
     displayingText = false;
@@ -96,7 +98,9 @@ void callback(char* topic, byte* message, unsigned int length) {
     return;
   }
 
+  // ========================================
   // MESSAGE TEXTE (seulement en mode AFFICHAGE)
+  // ========================================
   if (currentMode == MODE_AFFICHAGE) {
     newMessage = true;
   } else {
@@ -106,15 +110,15 @@ void callback(char* topic, byte* message, unsigned int length) {
 
 
 // =========================
-// RECONNEXION MQTT
+// RECONNEXION MQTT - OPTIMISÉE
 // =========================
 void reconnectMQTT() {
-  if (client.connected()) return;
+  if (client.connected()) return;  // Déjà connecté
   
   Serial.print("Connexion MQTT... ");
   
   String clientId = "ESP32_";
-  clientId += String(ESP.getEfuseMac(), HEX);
+  clientId += String(ESP.getEfuseMac(), HEX);  // ID unique basé sur MAC
   
   if (client.connect(clientId.c_str())) {
     Serial.println("✅ Connecté");
@@ -131,6 +135,7 @@ void reconnectMQTT() {
 // LECTURE & ANALYSE AUDIO
 // =========================
 void sampleAndAnalyzeAudio() {
+  // Échantillonnage audio
   for (int i = 0; i < SAMPLES; i++) {
     unsigned long currentMicros = micros();
     
@@ -142,13 +147,16 @@ void sampleAndAnalyzeAudio() {
     }
   }
 
+  // Calcul FFT
   FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward);
   FFT.compute(FFTDirection::Forward);
   FFT.complexToMagnitude();
 
+  // Forcer DC à 0
   vReal[0] = 0;
   vReal[1] = 0;
 
+  // Répartir sur 32 bandes
   for (int i = 0; i < NUM_BANDS; i++) {
     int startBin = i * (SAMPLES / 2) / NUM_BANDS;
     int endBin = (i + 1) * (SAMPLES / 2) / NUM_BANDS;
@@ -195,10 +203,11 @@ void setup() {
 
   Serial.println("\n🚀 ESP32 IoT - DÉMARRAGE");
 
+  // Configuration FFT
   samplingPeriod = round(1000000 * (1.0 / SAMPLING_FREQ));
   pinMode(MIC_PIN, INPUT);
 
-  // Configuration matrice optimisée pour fluidité
+  // Matrice LED
   myDisplay.begin();
   myDisplay.setIntensity(8);
   myDisplay.setInvert(false);
@@ -211,10 +220,10 @@ void setup() {
 
   // WiFi
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);
+  WiFi.setSleep(false);  // Désactiver le sleep WiFi pour latence minimale
   
   WiFiManager wm;
-  wm.setConfigPortalTimeout(180);
+  wm.setConfigPortalTimeout(180);  // Timeout 3 minutes
 
   wm.setAPCallback([](WiFiManager *myWM) {
     Serial.println("\n📱 WiFi: ESP32_Setup / 12345678");
@@ -230,9 +239,11 @@ void setup() {
   Serial.print("📡 IP: ");
   Serial.println(WiFi.localIP());
 
-  // MQTT
+  // MQTT avec optimisations
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+  
+  // Paramètres optimisés pour latence minimale
   client.setKeepAlive(10);
   client.setSocketTimeout(3);
   client.setBufferSize(512);
@@ -243,12 +254,11 @@ void setup() {
 
 
 // =========================
-// LOOP - OPTIMISÉE FLUIDITÉ
+// LOOP - ULTRA OPTIMISÉE
 // =========================
 void loop() {
-  unsigned long now = millis();
-  
   // Vérifier MQTT fréquemment (toutes les 10ms max)
+  unsigned long now = millis();
   if (now - lastMqttCheck >= 10) {
     if (!client.connected()) {
       reconnectMQTT();
@@ -268,8 +278,8 @@ void loop() {
       textStartTime = millis();
       
       myDisplay.displayClear();
-      myDisplay.setTextAlignment(PA_LEFT);  // Alignement LEFT pour défilement
-      myDisplay.setSpeed(50);  // Vitesse optimale pour fluidité
+      myDisplay.setTextAlignment(PA_CENTER);
+      myDisplay.setSpeed(40);
       myDisplay.setPause(0);
       myDisplay.setScrollSpacing(1);
       
@@ -309,6 +319,7 @@ void loop() {
     sampleAndAnalyzeAudio();
     displaySpectrum();
     
+    // Debug périodique
     if (millis() - lastDebugTime > 3000) {
       Serial.print("🎵 ");
       for (int i = 0; i < NUM_BANDS; i += 4) {
