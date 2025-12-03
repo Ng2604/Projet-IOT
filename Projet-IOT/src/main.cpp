@@ -46,6 +46,7 @@ double vReal[SAMPLES];
 double vImag[SAMPLES];
 unsigned long samplingPeriod;
 int bandValues[NUM_BANDS];
+unsigned long lastDebugTime = 0;  // Pour le debug périodique
 
 // Objet FFT
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
