@@ -317,7 +317,8 @@ void loop() {
 
     // Animer le texte - MODIFICATION CLÉ ICI
     if (displayingText) {
-      if (myDisplay.displayAnimate()) {
+      bool animFinished = myDisplay.displayAnimate();
+      if (animFinished || millis() - textStartTime > 10000) {
         // L'animation est terminée SEULEMENT quand displayAnimate() retourne true
         // ET que le texte a complètement disparu de l'écran
         displayingText = false;
