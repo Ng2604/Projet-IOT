@@ -120,8 +120,13 @@ void sampleAndAnalyzeAudio() {
       }
     }
     
-    // Normaliser sur 8 niveaux
-    bandValues[i] = map(maxVal, 0, 2000, 0, 8);
+    // AJOUT D'UN SEUIL pour ignorer le bruit de fond
+    if (maxVal < 100) {  // Seuil de bruit (ajuste cette valeur)
+      maxVal = 0;
+    }
+    
+    // Normaliser sur 8 niveaux avec meilleure sensibilité
+    bandValues[i] = map(maxVal, 0, 3000, 0, 8);  // Augmenté de 2000 à 3000
     bandValues[i] = constrain(bandValues[i], 0, 8);
   }
 }
@@ -257,6 +262,16 @@ void loop() {
   // Mode spectre audio
   sampleAndAnalyzeAudio();
   displaySpectrum();
+  
+  // DEBUG : afficher les valeurs toutes les 2 secondes
+  if (millis() - lastDebugTime > 2000) {
+    Serial.print("Valeurs spectre: ");
+    for (int i = 0; i < NUM_BANDS; i += 4) {  // Afficher 1 sur 4 pour lisibilité
+      Serial.printf("[%d]=%d ", i, bandValues[i]);
+    }
+    Serial.println();
+    lastDebugTime = millis();
+  }
   
   delay(50);
 }
