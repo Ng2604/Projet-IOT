@@ -20,6 +20,7 @@
 #define MIC_PIN 34  // ADC1_CH6 - Change si ton micro est sur un autre pin
 
 MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
 // MQTT
 const char* mqtt_server = "test.mosquitto.org";
@@ -36,7 +37,7 @@ bool newMessage = false;
 #define SAMPLING_FREQ 10000  // Hz - fréquence d'échantillonnage
 #define NUM_BANDS 32         // Nombre de bandes de fréquences (colonnes LED)
 
-arduinoFFT FFT = arduinoFFT();
+ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
 
 double vReal[SAMPLES];
 double vImag[SAMPLES];
@@ -101,9 +102,9 @@ void sampleAndAnalyzeAudio() {
   }
 
   // Calcul FFT
-  FFT.Windowing(vReal, SAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
-  FFT.Compute(vReal, vImag, SAMPLES, FFT_FORWARD);
-  FFT.ComplexToMagnitude(vReal, vImag, SAMPLES);
+  FFT.windowing(FFTWindow::Hamming, FFTDirection::Forward);
+  FFT.compute(FFTDirection::Forward);
+  FFT.complexToMagnitude();
 
   // Répartir les fréquences sur 32 bandes
   for (int i = 0; i < NUM_BANDS; i++) {
@@ -128,16 +129,19 @@ void sampleAndAnalyzeAudio() {
 // AFFICHAGE SPECTRE SUR MATRICE
 // =========================
 void displaySpectrum() {
-  myDisplay.displayClear();
+  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::OFF);  // Désactive rafraîchissement auto
+  mx.clear();
   
   for (int col = 0; col < NUM_BANDS; col++) {
     int height = bandValues[col];
     
     // Dessiner une colonne verticale pour chaque bande
     for (int row = 0; row < height; row++) {
-      myDisplay.setPoint(7 - row, col, true);  // 7-row pour inverser (bas vers haut)
+      mx.setPoint(7 - row, col, true);  // 7-row pour inverser (bas vers haut)
     }
   }
+  
+  mx.control(MD_MAX72XX::UPDATE, MD_MAX72XX::ON);  // Réactive le rafraîchissement
 }
 
 
@@ -155,6 +159,7 @@ void setup() {
   pinMode(MIC_PIN, INPUT);
 
   // Matrice LED
+  mx.begin();  // Initialise MD_MAX72XX pour le dessin pixel
   myDisplay.begin();
   myDisplay.setIntensity(5);
   myDisplay.displayClear();
