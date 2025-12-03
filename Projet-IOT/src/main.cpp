@@ -10,7 +10,11 @@
 #include <SPI.h>
 #include <arduinoFFT.h>
 
+// Essaie ces types un par un si FC16_HW ne marche pas :
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+// #define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
+// #define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
+// #define HARDWARE_TYPE MD_MAX72XX::ICSTATION_HW
 #define MAX_DEVICES 4
 #define CLK_PIN   18
 #define DATA_PIN  23
