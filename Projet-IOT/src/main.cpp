@@ -153,17 +153,23 @@ void sampleAndAnalyzeAudio() {
 // AFFICHAGE SPECTRE SUR MATRICE
 // =========================
 void displaySpectrum() {
-  // Utiliser mx pour dessiner le spectre pixel par pixel
-  mx.clear();
+  // Clear AGRESSIF avant chaque frame
+  for (int i = 0; i < MAX_DEVICES * 8; i++) {
+    for (int j = 0; j < 8; j++) {
+      mx.setPoint(j, i, false);
+    }
+  }
   
+  // Dessiner le spectre sur TOUTES les colonnes (0 à 31)
   for (int col = 0; col < NUM_BANDS; col++) {
     int height = bandValues[col];
     
-    // Ignorer bande 0 si saturée
+    // Ignorer bande 0 si saturée (le point fixe)
     if (col == 0 && height >= 7) {
       continue;
     }
     
+    // Dessiner la barre de bas en haut
     for (int row = 0; row < height; row++) {
       mx.setPoint(7 - row, col, true);
     }
@@ -244,6 +250,14 @@ void loop() {
     displayingText = true;
     textStartTime = millis();
     
+    // RESET complet avant passage en mode texte
+    mx.clear();
+    for (int i = 0; i < MAX_DEVICES * 8; i++) {
+      for (int j = 0; j < 8; j++) {
+        mx.setPoint(j, i, false);
+      }
+    }
+    
     // Configurer MD_Parola pour utiliser TOUTE la matrice
     myDisplay.displayClear();
     myDisplay.setTextAlignment(PA_CENTER);
@@ -257,6 +271,7 @@ void loop() {
     );
     
     newMessage = false;
+    Serial.println("Mode TEXTE activé");
   }
 
   // Mode texte : animer le texte pendant 10 secondes
@@ -266,8 +281,19 @@ void loop() {
     // Vérifier si animation terminée OU timeout
     if (animFinished || millis() - textStartTime > 10000) {
       displayingText = false;
+      
+      // RESET COMPLET avant retour au spectre
       myDisplay.displayClear();
+      delay(100);  // Petit délai pour laisser le clear se faire
+      
+      // Clear pixel par pixel pour être sûr
       mx.clear();
+      for (int i = 0; i < MAX_DEVICES * 8; i++) {
+        for (int j = 0; j < 8; j++) {
+          mx.setPoint(j, i, false);
+        }
+      }
+      
       Serial.println("Retour au spectre audio");
     }
   }
