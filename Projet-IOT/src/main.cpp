@@ -179,8 +179,15 @@ void setup() {
   mx.clear();
   
   // TEST : vérifier que clear fonctionne
-  mx.fillScreen(true);
+  // Allumer tous les pixels manuellement
+  for (int col = 0; col < MAX_DEVICES * 8; col++) {
+    for (int row = 0; row < 8; row++) {
+      mx.setPoint(row, col, true);
+    }
+  }
   delay(500);
+  
+  // Tout éteindre
   mx.clear();
   delay(500);
   
