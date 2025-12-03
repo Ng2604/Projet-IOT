@@ -248,8 +248,8 @@ void setup() {
 void loop() {
   unsigned long now = millis();
   
-  // Vérifier MQTT plus fréquemment
-  if (now - lastMqttCheck >= 5) {  // Réduit à 5ms pour meilleure réactivité
+  // Vérifier MQTT fréquemment (toutes les 10ms max)
+  if (now - lastMqttCheck >= 10) {
     if (!client.connected()) {
       reconnectMQTT();
     }
@@ -279,7 +279,7 @@ void loop() {
         50,
         0,
         PA_SCROLL_LEFT,
-        PA_NO_EFFECT
+        PA_NO_EFFECT  // Pas d'effet de sortie = le texte sort complètement
       );
       
       newMessage = false;
@@ -290,10 +290,12 @@ void loop() {
     if (displayingText) {
       bool animFinished = myDisplay.displayAnimate();
       
-      if (animFinished || millis() - textStartTime > 10000) {
+      // Ne s'arrêter QUE quand l'animation est vraiment finie
+      if (animFinished) {
         displayingText = false;
         myDisplay.displayClear();
         mx.clear();
+        Serial.println("✅ Animation terminée");
       }
     }
     
