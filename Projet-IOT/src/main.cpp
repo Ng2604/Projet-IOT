@@ -5,16 +5,13 @@
 #include <DNSServer.h>
 #include <WebServer.h>
 
+#include <MD_Parola.h>
 #include <MD_MAX72xx.h>
 #include <SPI.h>
 #include <arduinoFFT.h>
 
-// Essaie ces types un par un jusqu'à ce que ça marche :
-// #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+// Configuration matrice
 #define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
-// #define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
-// #define HARDWARE_TYPE MD_MAX72XX::ICSTATION_HW
-// #define HARDWARE_TYPE MD_MAX72XX::DR0CR0RD1_HW
 #define MAX_DEVICES 4
 #define CLK_PIN   18
 #define DATA_PIN  23
@@ -23,7 +20,10 @@
 // PIN MICROPHONE
 #define MIC_PIN 34
 
-// UNIQUEMENT MD_MAX72XX (plus de MD_Parola qui interfère)
+// MD_Parola pour le texte MQTT (comme ton ancien code)
+MD_Parola myDisplay = MD_Parola(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
+
+// MD_MAX72XX pour le spectre audio
 MD_MAX72XX mx = MD_MAX72XX(HARDWARE_TYPE, DATA_PIN, CLK_PIN, CS_PIN, MAX_DEVICES);
 
 // MQTT
@@ -35,6 +35,7 @@ PubSubClient client(espClient);
 // Message MQTT
 String messageToDisplay = "";
 bool newMessage = false;
+bool displayingText = false;  // Mode affichage : texte ou spectre
 
 // FFT AUDIO - Configuration
 #define SAMPLES 128
@@ -46,7 +47,8 @@ double vReal[SAMPLES];
 double vImag[SAMPLES];
 unsigned long samplingPeriod;
 int bandValues[NUM_BANDS];
-unsigned long lastDebugTime = 0;  // Pour le debug périodique
+unsigned long lastDebugTime = 0;
+unsigned long textStartTime = 0;
 
 // Objet FFT
 ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
@@ -57,11 +59,14 @@ ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ
 // =========================
 void callback(char* topic, byte* message, unsigned int length) {
   messageToDisplay = "";
+
   for (int i = 0; i < length; i++) {
     messageToDisplay += (char)message[i];
   }
+
   Serial.print("MQTT Message reçu: ");
   Serial.println(messageToDisplay);
+
   newMessage = true;
 }
 
@@ -72,8 +77,12 @@ void callback(char* topic, byte* message, unsigned int length) {
 void reconnectMQTT() {
   while (!client.connected()) {
     Serial.print("Connexion MQTT... ");
+
     String clientId = "ESP32_Matrix_";
     clientId += String(random(0xffff), HEX);
+
+    Serial.print("ClientID: ");
+    Serial.print(clientId);
 
     if (client.connect(clientId.c_str())) {
       Serial.println(" -> Connecté !");
@@ -109,9 +118,9 @@ void sampleAndAnalyzeAudio() {
   FFT.compute(FFTDirection::Forward);
   FFT.complexToMagnitude();
 
-  // IMPORTANT : Forcer la première bin (DC/bruit) à 0
+  // Forcer la première bin (DC/bruit) à 0
   vReal[0] = 0;
-  vReal[1] = 0;  // Et la deuxième aussi pour être sûr
+  vReal[1] = 0;
 
   // Répartir les fréquences sur 32 bandes
   for (int i = 0; i < NUM_BANDS; i++) {
@@ -125,13 +134,13 @@ void sampleAndAnalyzeAudio() {
       }
     }
     
-    // AJOUT D'UN SEUIL pour ignorer le bruit de fond
-    if (maxVal < 100) {  // Seuil de bruit (ajuste cette valeur)
+    // Seuil pour ignorer le bruit de fond
+    if (maxVal < 50) {
       maxVal = 0;
     }
     
-    // Normaliser sur 8 niveaux avec meilleure sensibilité
-    bandValues[i] = map(maxVal, 0, 3000, 0, 8);  // Augmenté de 2000 à 3000
+    // Normaliser sur 8 niveaux
+    bandValues[i] = map(maxVal, 0, 1500, 0, 8);
     bandValues[i] = constrain(bandValues[i], 0, 8);
   }
 }
@@ -141,36 +150,20 @@ void sampleAndAnalyzeAudio() {
 // AFFICHAGE SPECTRE SUR MATRICE
 // =========================
 void displaySpectrum() {
-  // CLEAR COMPLET - éteint TOUT
+  // Utiliser mx pour dessiner le spectre pixel par pixel
   mx.clear();
   
-  // Dessiner le spectre
   for (int col = 0; col < NUM_BANDS; col++) {
     int height = bandValues[col];
+    
+    // Ignorer bande 0 si saturée
+    if (col == 0 && height >= 7) {
+      continue;
+    }
     
     for (int row = 0; row < height; row++) {
       mx.setPoint(7 - row, col, true);
     }
-  }
-}
-
-
-// =========================
-// AFFICHAGE TEXTE SIMPLE
-// =========================
-void displayText(String text) {
-  mx.clear();
-  
-  // Affichage simple du texte (première ligne, tronqué si trop long)
-  mx.setFont(nullptr);  // Police par défaut
-  
-  // Afficher les premiers caractères (max 4 modules × 8 pixels)
-  int maxChars = min((int)text.length(), 16);
-  
-  for (int i = 0; i < maxChars && i < 4; i++) {
-    // Affichage basique caractère par caractère
-    // (Pour un vrai scroll, il faudrait une lib dédiée)
-    mx.setChar(i * 8, text[i]);
   }
 }
 
@@ -188,36 +181,19 @@ void setup() {
   // Pin microphone
   pinMode(MIC_PIN, INPUT);
 
-  // Matrice LED - UNIQUEMENT mx
-  mx.begin();
-  mx.control(MD_MAX72XX::INTENSITY, 2);  // Intensité basse
-  
-  // CLEAR AGRESSIF - éteindre chaque pixel individuellement
-  for (int device = 0; device < MAX_DEVICES; device++) {
-    for (int col = 0; col < 8; col++) {
-      for (int row = 0; row < 8; row++) {
-        mx.setPoint(row, device * 8 + col, false);
-      }
-    }
-  }
-  
-  // Double clear pour être sûr
+  // --------------------------
+  //  MATRICE LED
+  // --------------------------
+  mx.begin();  // Pour le spectre
+  myDisplay.begin();  // Pour le texte
+  myDisplay.setIntensity(5);
+  myDisplay.displayClear();
   mx.clear();
-  mx.clear();
-  
   Serial.println("Matrice prête !");
-  
-  // DEBUG : Afficher si des pixels sont encore allumés
-  Serial.println("Test pixels après clear:");
-  for (int col = 0; col < 8; col++) {
-    for (int row = 0; row < 8; row++) {
-      if (mx.getPoint(row, col)) {
-        Serial.printf("Pixel allumé détecté à row=%d, col=%d\n", row, col);
-      }
-    }
-  }
 
-  // WiFi Manager
+  // --------------------------
+  //  APPAIRAGE WiFi AUTOMATIQUE
+  // --------------------------
   WiFi.mode(WIFI_STA);
   WiFiManager wm;
 
@@ -238,7 +214,9 @@ void setup() {
   Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 
-  // MQTT
+  // --------------------------
+  //  MQTT
+  // --------------------------
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
@@ -250,32 +228,60 @@ void setup() {
 // LOOP
 // =========================
 void loop() {
-  // Maintenir MQTT
+  // Maintenir MQTT connecté
   if (!client.connected()) {
     reconnectMQTT();
   }
   client.loop();
 
-  // Si message MQTT reçu
+  // Si message MQTT reçu, passer en mode texte
   if (newMessage) {
-    displayText(messageToDisplay);
-    delay(3000);  // Afficher 3 secondes
-    mx.clear();
+    displayingText = true;
+    textStartTime = millis();
+    
+    // Afficher le texte avec MD_Parola (comme ton ancien code)
+    myDisplay.displayText(
+      messageToDisplay.c_str(),
+      PA_CENTER, 50, 0,
+      PA_SCROLL_LEFT, PA_SCROLL_LEFT
+    );
+    
     newMessage = false;
   }
 
-  // Mode spectre audio
-  sampleAndAnalyzeAudio();
-  displaySpectrum();
-  
-  // DEBUG : afficher les valeurs toutes les 2 secondes
-  if (millis() - lastDebugTime > 2000) {
-    Serial.print("Valeurs spectre: ");
-    for (int i = 0; i < NUM_BANDS; i += 4) {  // Afficher 1 sur 4 pour lisibilité
-      Serial.printf("[%d]=%d ", i, bandValues[i]);
+  // Mode texte : animer le texte pendant 10 secondes
+  if (displayingText) {
+    if (myDisplay.displayAnimate()) {
+      // Animation terminée ou timeout de 10 secondes
+      if (millis() - textStartTime > 10000) {
+        displayingText = false;
+        myDisplay.displayClear();
+        mx.clear();
+      }
     }
-    Serial.println();
-    lastDebugTime = millis();
+  }
+  // Mode spectre : afficher le spectre audio
+  else {
+    sampleAndAnalyzeAudio();
+    displaySpectrum();
+    
+    // DEBUG : afficher les valeurs toutes les 2 secondes
+    if (millis() - lastDebugTime > 2000) {
+      Serial.print("Valeurs spectre: ");
+      for (int i = 0; i < NUM_BANDS; i += 4) {
+        Serial.printf("[%d]=%d ", i, bandValues[i]);
+      }
+      Serial.println();
+      
+      // Valeurs RAW pour calibration
+      Serial.print("Valeurs RAW FFT (bins 10-20): ");
+      for (int i = 10; i < 20; i++) {
+        Serial.printf("%.0f ", vReal[i]);
+      }
+      Serial.println();
+      
+      lastDebugTime = millis();
+    }
   }
   
   delay(50);
