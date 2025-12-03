@@ -9,7 +9,12 @@
 #include <SPI.h>
 #include <arduinoFFT.h>
 
-#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+// Essaie ces types un par un jusqu'à ce que ça marche :
+// #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+#define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
+// #define HARDWARE_TYPE MD_MAX72XX::GENERIC_HW
+// #define HARDWARE_TYPE MD_MAX72XX::ICSTATION_HW
+// #define HARDWARE_TYPE MD_MAX72XX::DR0CR0RD1_HW
 #define MAX_DEVICES 4
 #define CLK_PIN   18
 #define DATA_PIN  23
@@ -176,22 +181,31 @@ void setup() {
   // Matrice LED - UNIQUEMENT mx
   mx.begin();
   mx.control(MD_MAX72XX::INTENSITY, 2);  // Intensité basse
-  mx.clear();
   
-  // TEST : vérifier que clear fonctionne
-  // Allumer tous les pixels manuellement
-  for (int col = 0; col < MAX_DEVICES * 8; col++) {
-    for (int row = 0; row < 8; row++) {
-      mx.setPoint(row, col, true);
+  // CLEAR AGRESSIF - éteindre chaque pixel individuellement
+  for (int device = 0; device < MAX_DEVICES; device++) {
+    for (int col = 0; col < 8; col++) {
+      for (int row = 0; row < 8; row++) {
+        mx.setPoint(row, device * 8 + col, false);
+      }
     }
   }
-  delay(500);
   
-  // Tout éteindre
+  // Double clear pour être sûr
   mx.clear();
-  delay(500);
+  mx.clear();
   
   Serial.println("Matrice prête !");
+  
+  // DEBUG : Afficher si des pixels sont encore allumés
+  Serial.println("Test pixels après clear:");
+  for (int col = 0; col < 8; col++) {
+    for (int row = 0; row < 8; row++) {
+      if (mx.getPoint(row, col)) {
+        Serial.printf("Pixel allumé détecté à row=%d, col=%d\n", row, col);
+      }
+    }
+  }
 
   // WiFi Manager
   WiFi.mode(WIFI_STA);
