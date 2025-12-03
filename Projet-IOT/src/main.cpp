@@ -37,10 +37,12 @@ bool newMessage = false;
 #define SAMPLING_FREQ 10000  // Hz - fréquence d'échantillonnage
 #define NUM_BANDS 32         // Nombre de bandes de fréquences (colonnes LED)
 
-ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
-
+// IMPORTANT : Déclarer les tableaux AVANT l'objet FFT
 double vReal[SAMPLES];
 double vImag[SAMPLES];
+
+ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
+
 unsigned long samplingPeriod;
 unsigned long lastSampleTime = 0;
 
