@@ -32,22 +32,19 @@ PubSubClient client(espClient);
 String messageToDisplay = "";
 bool newMessage = false;
 
-// FFT AUDIO
-#define SAMPLES 128          // Doit être une puissance de 2
-#define SAMPLING_FREQ 10000  // Hz - fréquence d'échantillonnage
-#define NUM_BANDS 32         // Nombre de bandes de fréquences (colonnes LED)
+// FFT AUDIO - Configuration
+#define SAMPLES 128
+#define SAMPLING_FREQ 10000
+#define NUM_BANDS 32
 
-// IMPORTANT : Déclarer les tableaux AVANT l'objet FFT
+// Variables FFT (DOIVENT être déclarées avant l'objet FFT)
 double vReal[SAMPLES];
 double vImag[SAMPLES];
-
-ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
-
 unsigned long samplingPeriod;
-unsigned long lastSampleTime = 0;
-
-// Bandes de fréquences affichées (8 hauteurs possibles)
 int bandValues[NUM_BANDS];
+
+// Objet FFT (APRÈS les variables)
+ArduinoFFT<double> FFT = ArduinoFFT<double>(vReal, vImag, SAMPLES, SAMPLING_FREQ);
 
 
 // =========================
