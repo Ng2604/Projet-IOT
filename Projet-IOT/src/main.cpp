@@ -126,12 +126,12 @@ void sampleAndAnalyzeAudio() {
     }
     
     // AJOUT D'UN SEUIL pour ignorer le bruit de fond
-    if (maxVal < 100) {  // Seuil de bruit (ajuste cette valeur)
+    if (maxVal < 50) {  // Seuil réduit de 100 à 50 pour plus de sensibilité
       maxVal = 0;
     }
     
-    // Normaliser sur 8 niveaux avec meilleure sensibilité
-    bandValues[i] = map(maxVal, 0, 3000, 0, 8);  // Augmenté de 2000 à 3000
+    // Normaliser sur 8 niveaux avec MEILLEURE sensibilité
+    bandValues[i] = map(maxVal, 0, 1500, 0, 8);  // Réduit de 3000 à 1500
     bandValues[i] = constrain(bandValues[i], 0, 8);
   }
 }
@@ -275,6 +275,14 @@ void loop() {
       Serial.printf("[%d]=%d ", i, bandValues[i]);
     }
     Serial.println();
+    
+    // Afficher aussi les valeurs RAW max pour calibration
+    Serial.print("Valeurs RAW FFT (bins 10-20): ");
+    for (int i = 10; i < 20; i++) {
+      Serial.printf("%.0f ", vReal[i]);
+    }
+    Serial.println();
+    
     lastDebugTime = millis();
   }
   
