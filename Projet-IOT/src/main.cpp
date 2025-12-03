@@ -297,38 +297,37 @@ void loop() {
       textStartTime = millis();
       
       myDisplay.displayClear();
-      myDisplay.setTextAlignment(PA_LEFT);  // Alignement LEFT pour défilement
-      myDisplay.setSpeed(50);  // Vitesse optimale pour fluidité
-      myDisplay.setPause(0);
+      myDisplay.setTextAlignment(PA_LEFT);
+      myDisplay.setSpeed(50);
+      myDisplay.setPause(1000);  // Pause à la fin
       myDisplay.setScrollSpacing(1);
       
       myDisplay.displayText(
         messageToDisplay.c_str(),
         PA_LEFT,
         50,
-        0,
+        1000,  // Pause de 1 seconde à la fin
         PA_SCROLL_LEFT,
-        PA_NO_EFFECT  // Pas d'effet de sortie = le texte sort complètement
+        PA_SCROLL_LEFT  // Effet de sortie identique = le texte sort complètement
       );
       
       newMessage = false;
-      Serial.println("✅ Message affiché");
+      Serial.println("✅ Message lancé en défilement");
     }
 
-    // Animer le texte
+    // Animer le texte - MODIFICATION CLÉ ICI
     if (displayingText) {
-      bool animFinished = myDisplay.displayAnimate();
-      
-      // Ne s'arrêter QUE quand l'animation est vraiment finie
-      if (animFinished) {
+      if (myDisplay.displayAnimate()) {
+        // L'animation est terminée SEULEMENT quand displayAnimate() retourne true
+        // ET que le texte a complètement disparu de l'écran
         displayingText = false;
         myDisplay.displayClear();
         mx.clear();
-        Serial.println("✅ Animation terminée");
+        Serial.println("✅ Animation terminée - texte complètement sorti");
       }
     }
     
-    // PAS DE DELAY en mode affichage = réactivité maximale
+    // Pas de delay pour réactivité maximale
     yield();
   }
   
