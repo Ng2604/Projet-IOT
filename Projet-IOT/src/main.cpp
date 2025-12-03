@@ -109,6 +109,10 @@ void sampleAndAnalyzeAudio() {
   FFT.compute(FFTDirection::Forward);
   FFT.complexToMagnitude();
 
+  // IMPORTANT : Forcer la première bin (DC/bruit) à 0
+  vReal[0] = 0;
+  vReal[1] = 0;  // Et la deuxième aussi pour être sûr
+
   // Répartir les fréquences sur 32 bandes
   for (int i = 0; i < NUM_BANDS; i++) {
     int startBin = i * (SAMPLES / 2) / NUM_BANDS;
