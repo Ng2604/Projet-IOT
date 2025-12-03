@@ -11,7 +11,10 @@
 #include <arduinoFFT.h>
 
 // Configuration matrice
-#define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
+// IMPORTANT : Utilise FC16_HW comme dans ton code original pour le texte
+#define HARDWARE_TYPE MD_MAX72XX::FC16_HW
+// Si le texte ne défile pas bien, essaie aussi :
+// #define HARDWARE_TYPE MD_MAX72XX::PAROLA_HW
 #define MAX_DEVICES 4
 #define CLK_PIN   18
 #define DATA_PIN  23
@@ -184,11 +187,13 @@ void setup() {
   // --------------------------
   //  MATRICE LED
   // --------------------------
-  mx.begin();  // Pour le spectre
-  myDisplay.begin();  // Pour le texte
+  myDisplay.begin();  // MD_Parola en premier
   myDisplay.setIntensity(5);
   myDisplay.displayClear();
+  
+  mx.begin();  // MD_MAX72XX ensuite
   mx.clear();
+  
   Serial.println("Matrice prête !");
 
   // --------------------------
@@ -239,7 +244,12 @@ void loop() {
     displayingText = true;
     textStartTime = millis();
     
-    // Afficher le texte avec MD_Parola (comme ton ancien code)
+    // Configurer MD_Parola pour utiliser TOUTE la matrice
+    myDisplay.displayClear();
+    myDisplay.setTextAlignment(PA_CENTER);
+    myDisplay.setSpeed(50);
+    
+    // Afficher le texte avec MD_Parola sur TOUTE la matrice
     myDisplay.displayText(
       messageToDisplay.c_str(),
       PA_CENTER, 50, 0,
@@ -251,13 +261,14 @@ void loop() {
 
   // Mode texte : animer le texte pendant 10 secondes
   if (displayingText) {
-    if (myDisplay.displayAnimate()) {
-      // Animation terminée ou timeout de 10 secondes
-      if (millis() - textStartTime > 10000) {
-        displayingText = false;
-        myDisplay.displayClear();
-        mx.clear();
-      }
+    bool animFinished = myDisplay.displayAnimate();
+    
+    // Vérifier si animation terminée OU timeout
+    if (animFinished || millis() - textStartTime > 10000) {
+      displayingText = false;
+      myDisplay.displayClear();
+      mx.clear();
+      Serial.println("Retour au spectre audio");
     }
   }
   // Mode spectre : afficher le spectre audio
